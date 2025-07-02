@@ -5,8 +5,7 @@
 #include <algorithm>
 #include <unordered_set>
 #include <functional>
-#include <random>
-#include <ctime>
+#include <map>
 
 // in this code I considered 'e' as epsilon so handling it would be much easier
 using namespace std;
@@ -147,11 +146,7 @@ CF deleteLandaProductions(CF cf)
     vector<production> productions;
     for (production p : cf.productions)
     {
-        if (p.to == "e" && p.from == cf.start)
-        {
-            productions.push_back(p);
-        }
-        else if (p.to == "e")
+        if (p.to == "e")
         {
             continue;
         }
@@ -187,7 +182,7 @@ CF deleteUnitProductions(CF cf)
             {
                 if (p2.from == p1.to[0])
                 {
-                    if (!containsProduction({p1.from, p2.to}, productions) && p2.to != "e")
+                    if (!containsProduction({p1.from, p2.to}, productions))
                     {
                         productions.push_back({p1.from, p2.to});
                     }
@@ -201,49 +196,122 @@ CF deleteUnitProductions(CF cf)
 char generateVariable(vector<char> v) // This method is implemented just to generate name for new variables
 // That we're going to add in deleteLeftLinearProductions method
 {
+    int ascii = 65;
     char c;
     do
     {
-        srand(time(0));
-        int random_number = rand() % 26 + 65;
-        c = char(random_number);
+        c = char(ascii);
+        ascii++;
     } while (vectorContainsChar(v, c));
     return c;
 }
 
 CF deleteLeftLinearProductions(CF cf)
 {
-    vector<production> productions;
+    vector<production> newProductions;
 
-    for (production p : cf.productions)
+    vector<char> newVariables;
+
+    newVariables = cf.variables;
+
+    for (char var : cf.variables)
     {
-        if (p.to[0] != p.from)
+        char alternative = generateVariable(newVariables);
+
+        newVariables.push_back(alternative);
+        vector<production> normalProductions;
+        vector<production> linearProductions;
+
+        for (production p : cf.productions)
         {
-            productions.push_back(p);
+            if (p.from == var)
+            {
+                if (p.from == p.to[0]) // Linear production detected
+                {
+                    linearProductions.push_back(p);
+                }
+                else
+                {
+                    normalProductions.push_back(p);
+                    newProductions.push_back(p);
+                }
+            }
         }
+        if (linearProductions.size() != 0)
+        {
+            for (production p : normalProductions)
+            {
+                newProductions.push_back({p.from, p.to + alternative});
+            }
+
+            for (production p : linearProductions)
+            {
+                string newTo = p.to;
+                newTo.erase(0, 1);
+                newTo += alternative;
+                newProductions.push_back({alternative, newTo});
+            }
+        }
+
         else
         {
+            newVariables.pop_back(); // No need for alternative variable
         }
     }
+
+    return CF(cf.start, cf.alphabets, newVariables, newProductions);
 }
 
 CF CFGtoGG(CF cf) // takes a context free grammar and return greibach grammar
 {
-    vector<char> alphabets = cf.alphabets;
-    vector<char> variables = cf.variables;
-    char start = cf.start;
-    vector<production> productions;
+    vector<char> newVariables = cf.variables;
+    vector<production> newProductions;
 
-    for (production i : cf.productions)
+    map<char, char> charToVar;
+
+    for (production p : cf.productions)
     {
+        if (p.to.size() == 1)
+        {
+            newProductions.push_back(p);
+            charToVar.insert(make_pair(p.to[0], p.from));
+        }
     }
-    CF GG = CF();
-    return GG;
+
+    for (char c : cf.alphabets)
+    {
+        if (charToVar.find(c) == charToVar.end())
+        {
+            char newVar = generateVariable(newVariables);
+            charToVar.insert(make_pair(c, newVar));
+            string newTo(1, c);
+            newProductions.push_back({newVar, newTo});
+            newVariables.push_back(newVar);
+        }
+    }
+
+    for (production p : cf.productions)
+    {
+        if (p.to.size() > 1)
+        {
+            string newTo = p.to;
+            for (int index = 1; index < newTo.size(); index++)
+            {
+                if (vectorContainsChar(cf.alphabets, newTo[index]))
+                {
+                    newTo[index] = charToVar[p.to[index]];
+                }
+            }
+            newProductions.push_back({p.from, newTo});
+        }
+    }
+
+    return CF(cf.start, cf.alphabets, newVariables, newProductions);
 }
 
 int main()
 {
-    CF cf = CF('A', {'a', 'b'}, {'A', 'B'}, {{'A', "e"}, {'A', "abcAB"}, {'B', "A"}});
+    CF cf = CF('A', {'a', 'b', 'c', 'd'}, {'A', 'B'}, {{'A', "e"}, {'A', "abcAB"}, {'B', "A"}, {'A', "Abcd"}});
     char start;
     string temp;
     vector<char> alphabets, variables;
@@ -258,7 +326,7 @@ int main()
     {
         alphabets.insert(alphabets.begin(), temp[i]);
     }
-    CF cf2 = deleteUnitProductions(deleteLandaProductions(cf));
+    CF cf2 = CFGtoGG(deleteLeftLinearProductions(deleteUnitProductions(deleteLandaProductions(cf))));
     for (production p : cf2.productions)
     {
         cout << p.from << "=>" << p.to << endl;
