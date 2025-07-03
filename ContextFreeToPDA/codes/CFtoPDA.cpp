@@ -32,15 +32,52 @@ class CF // context free grammar
 {
 public:
     char start;
-    vector<char> alphabets;
+    vector<char> alphabet;
     vector<char> variables;
     vector<production> productions;
 
-    CF(char start, vector<char> alphabets,
+    CF(char start, vector<char> alphabet,
        vector<char> variables,
-       vector<production> productions) : start(start), alphabets(alphabets),
+       vector<production> productions) : start(start), alphabet(alphabet),
                                          variables(variables), productions(productions) {}
     CF() {}
+
+private:
+};
+
+struct transition // e.g. {q0, a, A} => {q1, BC}
+{
+    string fromState;
+    char read;
+    char popSymbol;
+    string toState;
+    string pushSymbols;
+};
+
+class PDA // PushDown Automata
+{
+public:
+    vector<string> states;
+    string startState;
+    vector<char> alphabet;
+    vector<char> stackAlphabet;
+    char stackStartWith;
+    vector<string> finalStates; // There is actually only one final state in the algorithm we're using
+    // to convert CF grammar to a PDA
+    vector<transition> transitions;
+
+    PDA(vector<string> states,
+        string startState,
+        vector<char> alphabet,
+        vector<char> stackAlphabet,
+        char stackStartWith,
+        vector<string> finalStates,
+        vector<transition> transitions) : states(states), startState(startState),
+                                          alphabet(alphabet), stackAlphabet(stackAlphabet), stackStartWith(stackStartWith),
+                                          finalStates(finalStates), transitions(transitions)
+    {
+    }
+    PDA() {}
 
 private:
 };
@@ -161,7 +198,7 @@ CF deleteLandaProductions(CF cf)
             }
         }
     }
-    return CF(cf.start, cf.alphabets, cf.variables, productions);
+    return CF(cf.start, cf.alphabet, cf.variables, productions);
 }
 
 CF deleteUnitProductions(CF cf)
@@ -190,7 +227,7 @@ CF deleteUnitProductions(CF cf)
             }
         }
     }
-    return CF(cf.start, cf.alphabets, cf.variables, productions);
+    return CF(cf.start, cf.alphabet, cf.variables, productions);
 }
 
 char generateVariable(vector<char> v) // This method is implemented just to generate name for new variables
@@ -259,7 +296,7 @@ CF deleteLeftLinearProductions(CF cf)
         }
     }
 
-    return CF(cf.start, cf.alphabets, newVariables, newProductions);
+    return CF(cf.start, cf.alphabet, newVariables, newProductions);
 }
 
 CF CFGtoGG(CF cf) // takes a context free grammar and return greibach grammar
@@ -278,7 +315,7 @@ CF CFGtoGG(CF cf) // takes a context free grammar and return greibach grammar
         }
     }
 
-    for (char c : cf.alphabets)
+    for (char c : cf.alphabet)
     {
         if (charToVar.find(c) == charToVar.end())
         {
@@ -297,7 +334,7 @@ CF CFGtoGG(CF cf) // takes a context free grammar and return greibach grammar
             string newTo = p.to;
             for (int index = 1; index < newTo.size(); index++)
             {
-                if (vectorContainsChar(cf.alphabets, newTo[index]))
+                if (vectorContainsChar(cf.alphabet, newTo[index]))
                 {
                     newTo[index] = charToVar[p.to[index]];
                 }
@@ -306,12 +343,51 @@ CF CFGtoGG(CF cf) // takes a context free grammar and return greibach grammar
         }
     }
 
-    return CF(cf.start, cf.alphabets, newVariables, newProductions);
+    return CF(cf.start, cf.alphabet, newVariables, newProductions);
+}
+
+PDA GGtoPDA(CF GG) // Takes a Greibach grammar to PushDown Automata
+{
+    vector<char> stackAlphabet = GG.alphabet;
+    stackAlphabet.insert(stackAlphabet.end(), GG.variables.begin(), GG.variables.end());
+    stackAlphabet.push_back('$');
+
+    vector<string> states = {"q0", "q1", "qf"};
+    string startState = "q0";
+    vector<string> finalState = {"qf"};
+
+    char stackStartWith = '$';
+
+    vector<transition> transitions;
+
+    string to(1, GG.start);
+    to += "$";
+
+    transitions.push_back({"q0", 'e', '$', "q1", to});
+
+    for (production p : GG.productions)
+    {
+        if (p.to.size() == 1)
+        {
+            transitions.push_back({"q1", p.to[0], p.from, "q1", "e"});
+        }
+        else
+        {
+            transitions.push_back({"q1", p.to[0], p.from, "q1", p.to.substr(1)});
+        }
+    }
+
+    transitions.push_back({"q1", 'e', '$', "q2", "$"});
+
+    return PDA(states, startState, GG.alphabet, stackAlphabet, stackStartWith, finalState, transitions);
 }
 
 int main()
 {
-    CF cf = CF('A', {'a', 'b', 'c', 'd'}, {'A', 'B'}, {{'A', "e"}, {'A', "abcAB"}, {'B', "A"}, {'A', "Abcd"}});
+    // CF cf = CF('A', {'a', 'b', 'c', 'd'}, {'A', 'B'}, {{'A', "e"}, {'A', "abcAB"}, {'B', "A"}, {'A', "Abcd"}});
+    // CF cf2 = CF('S', {'a', 'b'}, {'S'}, {{'S', "aSb"}, {'S', "e"}});
+
+    // Those two above lines are examples to clear the format of a CF (start varible, alphabet, variables, productions)
     char start;
     string temp;
     vector<char> alphabets, variables;
@@ -324,11 +400,44 @@ int main()
 
     for (int i = 0; i < temp.length(); i++)
     {
-        alphabets.insert(alphabets.begin(), temp[i]);
+        alphabets.push_back(temp[i]);
     }
-    CF cf2 = CFGtoGG(deleteLeftLinearProductions(deleteUnitProductions(deleteLandaProductions(cf))));
-    for (production p : cf2.productions)
+
+    cout << endl
+         << "Enter variables:(no space between them) ";
+    cin >> temp;
+
+    for (int i = 0; i < temp.length(); i++)
     {
-        cout << p.from << "=>" << p.to << endl;
+        variables.push_back(temp[i]);
+    }
+
+    int productionNumber;
+
+    cout << endl
+         << "how many production does your grammar have? ";
+    cin >> productionNumber;
+
+    cout << "for example for A => aBCdA type this: A aBCdA" << endl;
+    for (int i = 0; i < productionNumber; i++)
+    {
+        cout << "Enter grammar number" << i + 1 << ": ";
+        char from;
+        string to;
+        cin >> from;
+        cin >> to;
+        production p = {from, to};
+        productions.push_back(p);
+    }
+
+    CF grammar = CF(start, alphabets, variables, productions);
+
+    CF GG = CFGtoGG(deleteLeftLinearProductions(deleteUnitProductions(deleteLandaProductions(grammar))));
+
+    PDA pda = GGtoPDA(GG);
+
+    for (transition t : pda.transitions)
+    {
+        cout << '{' << t.fromState << ',' << t.read << ',' << t.popSymbol << "} => {" << t.toState << ',' << t.pushSymbols << '}' << endl;
     }
 }
